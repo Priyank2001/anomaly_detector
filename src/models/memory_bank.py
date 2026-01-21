@@ -1,14 +1,14 @@
 import torch
 import numpy as np
 from torch.utils.data import DataLoader
-from dataset import MVTechDataset
+from src.datasets.dataset import MVTechDataset
 from feature_extractor import FeatureExtractor
 
 import torch.nn.functional as F
 
 device = "cpu"
 
-dataset = MVTechDataset(root="./data/bottle",split="train")
+dataset = MVTechDataset(root="../../data/bottle",split="train")
 
 loader = DataLoader(dataset=dataset,batch_size=8,shuffle=False)
 
