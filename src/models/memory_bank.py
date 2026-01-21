@@ -1,44 +1,37 @@
 import torch
-import numpy as np
-from torch.utils.data import DataLoader
-from src.datasets.dataset import MVTechDataset
-from feature_extractor import FeatureExtractor
 
-import torch.nn.functional as F
+class MemoryBank:
+    def __init__(self):
+        self.features = None
 
-device = "cpu"
+    def add(self, features: torch.Tensor):
+        """
+        features: (N, D)
+        """
+        if self.features is None:
+            self.features = features
+        else:
+            self.features = torch.cat([self.features, features], dim=0)
 
-dataset = MVTechDataset(root="../../data/bottle",split="train")
+    def size(self):
+        return 0 if self.features is None else self.features.shape[0]
 
-loader = DataLoader(dataset=dataset,batch_size=8,shuffle=False)
+    def query(self, features: torch.Tensor):
+        """
+        Query the memory bank with `features`.
 
-model = FeatureExtractor().to(device)
-model.eval()
+        features: Tensor of shape (N, D)
+        Returns: distances Tensor of shape (N,) with the minimal euclidean distance
+        from each query feature to the memory bank features.
+        """
+        if self.features is None:
+            raise RuntimeError("Memory bank is empty. Add features before querying.")
 
-memoryBank = []
+        # Ensure tensors are on the same device
+        bank = self.features.to(features.device)
 
-with torch.no_grad():
-    for imgs,_ in loader:
-        imgs = imgs.to(device)
-        f2,f3 = model(imgs)
-
-        f2 = F.interpolate(
-            f2,
-            size=f3.shape[-2:],   # (14, 14)
-            mode="bilinear",
-            align_corners=False
-        )
-
-        f2 = f2.permute(0,2,3,1).contiguous()
-        f2 =f2.view(-1,f2.shape[-1])
-        f3 = f3.permute(0,2,3,1).contiguous()
-        f3 = f3.view(-1,f3.shape[-1])
-
-        features = torch.cat([f2,f3],dim = 1)
-
-        memoryBank.append(features.cpu().numpy())
-
-memoryBank = np.concatenate(memoryBank,axis=0)
-
-np.save("memory_bank.npy",memoryBank)
-print("Memory Bank saved:",memoryBank.shape)
+        # Compute pairwise distances and take min across bank entries
+        # cdist returns shape (N, M)
+        dists = torch.cdist(features, bank)
+        mins, _ = dists.min(dim=1)
+        return mins

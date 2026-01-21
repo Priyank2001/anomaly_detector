@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-from feature_extractor import FeatureExtractor
+from src.models.feature_extractor import FeatureExtractor
 
 class AnomalyModel:
     def __init__(self,feature_extractor:FeatureExtractor , memory_bank , device = "cpu"):
@@ -12,7 +12,9 @@ class AnomalyModel:
         self.feature_extractor.to(device=self.device)
 
         return
-    
+    def __call__(self, x):
+        return self.forward(x)
+
     @torch.no_grad()
     def forward(self,x):
         """
@@ -23,24 +25,37 @@ class AnomalyModel:
             anomaly_score:
         """
         
-        # Extract Multi-layer features
+        # Extract Multi-layer features (tuple/list of feature maps)
         features = self.feature_extractor(x.to(self.device))
-        # features : list of feature maps [(1,c1,h1,w1),(1,c2,h2,w2)]
+        if not isinstance(features, (list, tuple)):
+            features = [features]
 
-        patch_features = []
+        # Determine target spatial size (use the largest H,W among features)
+        spatial_sizes = [ (f.shape[-2], f.shape[-1]) for f in features ]
+        target_H = max(s[0] for s in spatial_sizes)
+        target_W = max(s[1] for s in spatial_sizes)
 
+        patch_features_per_layer = []
         for f in features:
-            B,C,W,H = f.shape
-            f = f.reshape(B,C,H*W)
-            f.permutate(0,2,1)
-            patch_features.append(f)
-        patch_features = torch.cat(patch_features,dir=-1)
+            B, C, H, W = f.shape
+            if (H, W) != (target_H, target_W):
+                import torch.nn.functional as F
+                f = F.interpolate(f, size=(target_H, target_W), mode="bilinear", align_corners=False)
 
+            # reshape to (B, H*W, C)
+            f = f.reshape(B, C, -1).permute(0, 2, 1)
+            patch_features_per_layer.append(f)
+
+        # Concatenate channel dims for each spatial patch -> (B, num_patches, D)
+        patch_features = torch.cat(patch_features_per_layer, dim=2)
+
+        # remove batch dim (expects B==1)
         patch_features = patch_features.squeeze(0)
 
+        # Query memory bank: returns distances for each patch (num_patches,)
         distances = self.memory_bank.query(patch_features)
 
-        spatial_size = features[0].shape[-2:] # (H1,W1)
+        spatial_size = (target_H, target_W)
 
         anomaly_map = distances.reshape(spatial_size)
 
@@ -55,3 +70,7 @@ class AnomalyModel:
 
 
         return anomaly_map , anomaly_score
+    
+    def extract_patches():      
+        
+        return
