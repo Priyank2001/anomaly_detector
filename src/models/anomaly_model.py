@@ -70,7 +70,3 @@ class AnomalyModel:
 
 
         return anomaly_map , anomaly_score
-    
-    def extract_patches():      
-        
-        return

@@ -1,10 +1,11 @@
 import torch
-
+import numpy as np
 from src.datasets.dataset import MVTechDataset
 from src.models.feature_extractor import FeatureExtractor
 from src.models.memory_bank import MemoryBank
 from src.models.anomaly_model import AnomalyModel
-
+import matplotlib.pyplot as plt
+import cv2
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 DATA_ROOT = "./data/bottle"
 
@@ -14,7 +15,7 @@ DATA_ROOT = "./data/bottle"
 dataset = MVTechDataset(root=DATA_ROOT, split="train")
 img , _ = dataset[0]
 img = img.unsqueeze(0).to(DEVICE)
-
+img_vis = img.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()
 
 # ------------------
 # Feature extractor
@@ -52,3 +53,44 @@ anomaly_map, anomaly_score = model(img)
 
 print("Anomaly map shape:", anomaly_map.shape)
 print("Anomaly score:", anomaly_score)
+
+heatmap = anomaly_map.detach().cpu().numpy()
+heatmap = (heatmap - heatmap.min()) / (heatmap.max() - heatmap.min() + 1e-8)
+
+# -------------------------
+# Convert to color heatmap
+# -------------------------
+heatmap_color = cv2.applyColorMap(
+    np.uint8(255 * heatmap),
+    cv2.COLORMAP_JET
+)
+
+heatmap_color = cv2.cvtColor(heatmap_color, cv2.COLOR_BGR2RGB)
+
+# -------------------------
+# Overlay heatmap on image
+# -------------------------
+overlay = 0.6 * img_vis + 0.4 * (heatmap_color / 255.0)
+
+# -------------------------
+# Show results
+# -------------------------
+plt.figure(figsize=(12,4))
+
+plt.subplot(1,3,1)
+plt.title("Original Image")
+plt.imshow(img_vis)
+plt.axis("off")
+
+plt.subplot(1,3,2)
+plt.title("Anomaly Heatmap")
+plt.imshow(heatmap, cmap="jet")
+plt.axis("off")
+
+plt.subplot(1,3,3)
+plt.title("Overlay")
+plt.imshow(overlay)
+plt.axis("off")
+
+plt.tight_layout()
+plt.show()
